@@ -38,10 +38,16 @@ npm run dev
 
 1. [Google Apps Script](https://script.google.com/) で新しいプロジェクトを作成
 2. `gas/` ディレクトリ内のファイルをプロジェクトにコピー
-3. Groq APIキーをスクリプトプロパティに設定:
-   - プロジェクト設定 > スクリプトプロパティ
-   - キー: `GROQ_API_KEY`
-   - 値: Groq APIキー
+3. Groq APIキーを設定（以下のいずれかの方法）:
+
+**方法A: セットアップ関数を使用**
+1. `Code.gs` の `setupGroqApiKey()` 関数内の `'YOUR_GROQ_API_KEY'` を実際のAPIキーに置き換え
+2. GASエディタで `setupGroqApiKey` を選択して実行
+
+**方法B: スクリプトプロパティで直接設定**
+1. GASエディタ左側の歯車アイコン（プロジェクトの設定）をクリック
+2. 「スクリプト プロパティ」セクションで「スクリプト プロパティを追加」
+3. プロパティ: `GROQ_API_KEY`、値: あなたのGroq APIキー
 
 ### 3. ビルドとデプロイ
 

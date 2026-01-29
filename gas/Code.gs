@@ -8,6 +8,27 @@ const SHEET_NAME = 'NazenazeData';
 const HEADERS = ['analysis_id', 'parent_id', 'content', 'level', 'type', 'updated_at', 'assignee', 'due_date'];
 
 /**
+ * 初期セットアップ - Groq APIキーを設定
+ * GASエディタで一度だけ実行してください
+ *
+ * 使い方:
+ * 1. 下記の 'YOUR_GROQ_API_KEY' を実際のAPIキーに置き換える
+ * 2. この関数を実行する
+ */
+function setupGroqApiKey() {
+  // ここにGroq APIキーを入力してから実行
+  const apiKey = 'YOUR_GROQ_API_KEY';
+
+  if (apiKey === 'YOUR_GROQ_API_KEY') {
+    Logger.log('❌ APIキーを設定してから実行してください');
+    return;
+  }
+
+  PropertiesService.getScriptProperties().setProperty('GROQ_API_KEY', apiKey);
+  Logger.log('✅ Groq APIキーを設定しました');
+}
+
+/**
  * Webアプリケーションのエントリーポイント
  */
 function doGet(e) {
