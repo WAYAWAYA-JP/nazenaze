@@ -5,44 +5,558 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>なぜなぜ分析ツール</title>
   <base target="_top">
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    /* 読み込み中の表示 */
-    .loading-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      font-family: 'Hiragino Sans', 'Meiryo', sans-serif;
-    }
-    .loading-spinner {
-      width: 50px;
-      height: 50px;
-      border: 4px solid rgba(255,255,255,0.3);
-      border-radius: 50%;
-      border-top-color: white;
-      animation: spin 1s ease-in-out infinite;
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    .loading-text {
-      margin-top: 20px;
-      font-size: 1.2rem;
-    }
+    body { font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; }
+    .node-problem { border-left: 4px solid #f87171; background: #fef2f2; }
+    .node-why { border-left: 4px solid #60a5fa; background: #eff6ff; }
+    .node-action { border-left: 4px solid #34d399; background: #ecfdf5; }
   </style>
 </head>
-<body>
-  <div id="root">
-    <div class="loading-container">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">読み込み中...</div>
+<body class="bg-gray-100 min-h-screen">
+  <!-- ヘッダー -->
+  <header class="bg-gradient-to-r from-blue-600 to-blue-800 text-white shadow-lg">
+    <div class="max-w-7xl mx-auto px-4 py-4">
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <div class="flex items-center gap-3">
+          <div class="bg-white/20 p-2 rounded-lg">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+          </div>
+          <div>
+            <h1 class="text-xl font-bold">なぜなぜ分析ツール</h1>
+            <p class="text-sm text-blue-200">Why-Why Analysis Tool</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button onclick="newAnalysis()" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors">新規作成</button>
+          <button onclick="showList()" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors">一覧</button>
+          <button onclick="saveAnalysis()" id="saveBtn" class="px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg transition-colors">保存</button>
+          <button onclick="shareAnalysis()" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors">共有</button>
+          <button onclick="exportPdf()" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors">PDF</button>
+        </div>
+      </div>
+      <div id="message" class="hidden mt-3 px-4 py-2 rounded-lg"></div>
+    </div>
+  </header>
+
+  <!-- メインコンテンツ -->
+  <main class="max-w-4xl mx-auto p-4">
+    <div id="tree-container"></div>
+  </main>
+
+  <!-- 一覧モーダル -->
+  <div id="listModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
+      <div class="p-4 border-b flex items-center justify-between">
+        <h2 class="text-xl font-bold text-gray-800">保存済みの分析</h2>
+        <button onclick="closeList()" class="text-gray-500 hover:text-gray-700">✕</button>
+      </div>
+      <div id="listContent" class="p-4 overflow-y-auto max-h-[60vh]"></div>
     </div>
   </div>
 
-  <!-- ビルドされたReactアプリがここに挿入されます -->
-  <?!= include('bundle'); ?>
+  <!-- AI提案モーダル -->
+  <div id="aiModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4">
+      <div class="p-4 border-b flex items-center justify-between">
+        <h2 class="text-lg font-bold text-purple-800" id="aiModalTitle">AI提案</h2>
+        <button onclick="closeAiModal()" class="text-gray-500 hover:text-gray-700">✕</button>
+      </div>
+      <div id="aiContent" class="p-4"></div>
+    </div>
+  </div>
+
+  <script>
+    // グローバル状態
+    let analysisId = null;
+    let nodeIdCounter = 1;
+    let nodes = {};
+
+    // 初期化
+    function init() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const id = urlParams.get('id');
+      if (id) {
+        loadAnalysis(id);
+      } else {
+        newAnalysis();
+      }
+    }
+
+    // 新規分析
+    function newAnalysis() {
+      analysisId = null;
+      nodeIdCounter = 1;
+      nodes = {};
+      const rootId = createNode(null, 0, 'problem', '');
+      renderTree();
+    }
+
+    // ノード作成
+    function createNode(parentId, level, type, content) {
+      const id = 'node-' + (nodeIdCounter++);
+      nodes[id] = {
+        id: id,
+        parentId: parentId,
+        level: level,
+        type: type,
+        content: content,
+        assignee: '',
+        dueDate: '',
+        children: []
+      };
+      if (parentId && nodes[parentId]) {
+        nodes[parentId].children.push(id);
+      }
+      return id;
+    }
+
+    // ツリー描画
+    function renderTree() {
+      const container = document.getElementById('tree-container');
+      const rootNode = Object.values(nodes).find(n => n.level === 0);
+      if (!rootNode) {
+        container.innerHTML = '<p class="text-gray-500">データがありません</p>';
+        return;
+      }
+      container.innerHTML = renderNode(rootNode.id);
+    }
+
+    // ノード描画
+    function renderNode(nodeId) {
+      const node = nodes[nodeId];
+      if (!node) return '';
+
+      const typeClass = node.type === 'problem' ? 'node-problem' :
+                        node.type === 'action' ? 'node-action' : 'node-why';
+      const label = node.type === 'problem' ? '問題' :
+                    node.type === 'action' ? '対策' : 'なぜ ' + node.level;
+      const labelBg = node.type === 'problem' ? 'bg-red-200 text-red-800' :
+                      node.type === 'action' ? 'bg-green-200 text-green-800' : 'bg-blue-200 text-blue-800';
+      const placeholder = node.type === 'problem' ? '発生している問題を入力...' :
+                          node.type === 'action' ? '具体的な対策を入力...' : 'なぜその問題が起きたのか？';
+
+      let html = `
+        <div class="rounded-lg p-4 mb-3 ${typeClass}">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-sm font-semibold px-2 py-0.5 rounded ${labelBg}">${label}</span>
+            ${node.type !== 'problem' ? `<button onclick="removeNode('${nodeId}')" class="ml-auto text-gray-400 hover:text-red-500" title="削除">🗑</button>` : ''}
+          </div>
+          <textarea
+            id="content-${nodeId}"
+            onchange="updateContent('${nodeId}')"
+            placeholder="${placeholder}"
+            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            rows="2"
+          >${node.content}</textarea>
+      `;
+
+      // アクションノードの場合
+      if (node.type === 'action') {
+        html += `
+          <div class="mt-3 grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm text-gray-600 mb-1">担当者</label>
+              <input type="text" id="assignee-${nodeId}" value="${node.assignee}" onchange="updateAssignee('${nodeId}')"
+                placeholder="誰が？" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500">
+            </div>
+            <div>
+              <label class="block text-sm text-gray-600 mb-1">期限</label>
+              <input type="date" id="dueDate-${nodeId}" value="${node.dueDate}" onchange="updateDueDate('${nodeId}')"
+                class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500">
+            </div>
+          </div>
+        `;
+      }
+
+      // ボタン（アクションノード以外）
+      if (node.type !== 'action') {
+        html += `
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button onclick="addWhy('${nodeId}')" class="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600">+ なぜ？を追加</button>
+            <button onclick="addAction('${nodeId}')" class="px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600">+ 対策を追加</button>
+            <button onclick="suggestWhy('${nodeId}')" class="px-3 py-1.5 bg-purple-500 text-white text-sm rounded-lg hover:bg-purple-600">AI提案(なぜ)</button>
+            <button onclick="suggestAction('${nodeId}')" class="px-3 py-1.5 bg-orange-500 text-white text-sm rounded-lg hover:bg-orange-600">AI提案(対策)</button>
+          </div>
+        `;
+      }
+
+      // 子ノード
+      if (node.children.length > 0) {
+        html += '<div class="mt-4 ml-6 border-l-2 border-gray-200 pl-4">';
+        node.children.forEach(childId => {
+          html += renderNode(childId);
+        });
+        html += '</div>';
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    // コンテンツ更新
+    function updateContent(nodeId) {
+      const el = document.getElementById('content-' + nodeId);
+      if (el && nodes[nodeId]) {
+        nodes[nodeId].content = el.value;
+      }
+    }
+
+    function updateAssignee(nodeId) {
+      const el = document.getElementById('assignee-' + nodeId);
+      if (el && nodes[nodeId]) {
+        nodes[nodeId].assignee = el.value;
+      }
+    }
+
+    function updateDueDate(nodeId) {
+      const el = document.getElementById('dueDate-' + nodeId);
+      if (el && nodes[nodeId]) {
+        nodes[nodeId].dueDate = el.value;
+      }
+    }
+
+    // なぜを追加
+    function addWhy(parentId) {
+      const parent = nodes[parentId];
+      if (!parent) return;
+      createNode(parentId, parent.level + 1, 'why', '');
+      renderTree();
+    }
+
+    // 対策を追加
+    function addAction(parentId) {
+      const parent = nodes[parentId];
+      if (!parent) return;
+      createNode(parentId, parent.level + 1, 'action', '');
+      renderTree();
+    }
+
+    // ノード削除
+    function removeNode(nodeId) {
+      const node = nodes[nodeId];
+      if (!node || node.type === 'problem') return;
+
+      // 親から削除
+      if (node.parentId && nodes[node.parentId]) {
+        nodes[node.parentId].children = nodes[node.parentId].children.filter(id => id !== nodeId);
+      }
+
+      // 子孫も削除
+      function removeDescendants(id) {
+        const n = nodes[id];
+        if (n && n.children) {
+          n.children.forEach(removeDescendants);
+        }
+        delete nodes[id];
+      }
+      removeDescendants(nodeId);
+
+      renderTree();
+    }
+
+    // メッセージ表示
+    function showMessage(text, type) {
+      const el = document.getElementById('message');
+      el.textContent = text;
+      el.className = 'mt-3 px-4 py-2 rounded-lg ' + (type === 'success' ? 'bg-green-500/20' : 'bg-red-500/20');
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 3000);
+    }
+
+    // 保存
+    function saveAnalysis() {
+      // 全ノードの内容を取得
+      Object.keys(nodes).forEach(nodeId => {
+        updateContent(nodeId);
+        if (nodes[nodeId].type === 'action') {
+          updateAssignee(nodeId);
+          updateDueDate(nodeId);
+        }
+      });
+
+      const flatNodes = Object.values(nodes).map(n => ({
+        id: n.id,
+        parentId: n.parentId || '',
+        content: n.content,
+        level: n.level,
+        type: n.type,
+        assignee: n.assignee || '',
+        dueDate: n.dueDate || ''
+      }));
+
+      document.getElementById('saveBtn').textContent = '保存中...';
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          document.getElementById('saveBtn').textContent = '保存';
+          if (result.success) {
+            analysisId = result.analysisId;
+            showMessage('保存しました', 'success');
+          } else {
+            showMessage(result.error || '保存に失敗しました', 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          document.getElementById('saveBtn').textContent = '保存';
+          showMessage('エラー: ' + error.message, 'error');
+        })
+        .saveAnalysis({ analysisId: analysisId, nodes: flatNodes });
+    }
+
+    // 読み込み
+    function loadAnalysis(id) {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success && result.nodes && result.nodes.length > 0) {
+            analysisId = id;
+            nodes = {};
+            nodeIdCounter = 1;
+
+            // ノードを復元
+            result.nodes.forEach(n => {
+              const numId = parseInt(n.id.replace('node-', ''));
+              if (numId >= nodeIdCounter) nodeIdCounter = numId + 1;
+              nodes[n.id] = {
+                id: n.id,
+                parentId: n.parentId || null,
+                level: n.level,
+                type: n.type,
+                content: n.content,
+                assignee: n.assignee || '',
+                dueDate: n.dueDate || '',
+                children: []
+              };
+            });
+
+            // 親子関係を復元
+            Object.values(nodes).forEach(n => {
+              if (n.parentId && nodes[n.parentId]) {
+                nodes[n.parentId].children.push(n.id);
+              }
+            });
+
+            renderTree();
+            showMessage('読み込みました', 'success');
+          } else {
+            showMessage(result.error || '読み込みに失敗しました', 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showMessage('エラー: ' + error.message, 'error');
+        })
+        .loadAnalysis(id);
+    }
+
+    // 一覧表示
+    function showList() {
+      document.getElementById('listModal').classList.remove('hidden');
+      document.getElementById('listContent').innerHTML = '<p class="text-gray-500">読み込み中...</p>';
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success && result.analyses) {
+            if (result.analyses.length === 0) {
+              document.getElementById('listContent').innerHTML = '<p class="text-gray-500 text-center py-8">保存された分析がありません</p>';
+            } else {
+              let html = '<div class="space-y-3">';
+              result.analyses.forEach(a => {
+                html += `
+                  <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100">
+                    <div>
+                      <h3 class="font-medium text-gray-800">${a.title || '無題の分析'}</h3>
+                      <p class="text-sm text-gray-500">${new Date(a.updatedAt).toLocaleString('ja-JP')}</p>
+                    </div>
+                    <div class="flex gap-2">
+                      <button onclick="closeList(); loadAnalysis('${a.id}')" class="px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600">開く</button>
+                      <button onclick="deleteAnalysis('${a.id}')" class="px-3 py-1.5 bg-red-500 text-white rounded hover:bg-red-600">削除</button>
+                    </div>
+                  </div>
+                `;
+              });
+              html += '</div>';
+              document.getElementById('listContent').innerHTML = html;
+            }
+          }
+        })
+        .withFailureHandler(function(error) {
+          document.getElementById('listContent').innerHTML = '<p class="text-red-500">エラー: ' + error.message + '</p>';
+        })
+        .getAnalysisList();
+    }
+
+    function closeList() {
+      document.getElementById('listModal').classList.add('hidden');
+    }
+
+    // 削除
+    function deleteAnalysis(id) {
+      if (!confirm('この分析を削除しますか？')) return;
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            showList();
+            showMessage('削除しました', 'success');
+          }
+        })
+        .deleteAnalysis(id);
+    }
+
+    // 共有
+    function shareAnalysis() {
+      if (!analysisId) {
+        showMessage('先に保存してください', 'error');
+        return;
+      }
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success && result.url) {
+            navigator.clipboard.writeText(result.url);
+            showMessage('共有URLをコピーしました', 'success');
+          }
+        })
+        .getShareUrl(analysisId);
+    }
+
+    // PDF出力
+    function exportPdf() {
+      if (!analysisId) {
+        showMessage('先に保存してください', 'error');
+        return;
+      }
+
+      showMessage('PDF生成中...', 'success');
+      const flatNodes = Object.values(nodes).map(n => ({
+        id: n.id,
+        parentId: n.parentId || '',
+        content: n.content,
+        level: n.level,
+        type: n.type,
+        assignee: n.assignee || '',
+        dueDate: n.dueDate || ''
+      }));
+      const rootNode = Object.values(nodes).find(n => n.level === 0);
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success && result.url) {
+            window.open(result.url, '_blank');
+            showMessage('PDFを生成しました', 'success');
+          } else {
+            showMessage(result.error || 'PDF生成に失敗しました', 'error');
+          }
+        })
+        .createPdf({ analysisId: analysisId, nodes: flatNodes, title: rootNode ? rootNode.content : 'なぜなぜ分析' });
+    }
+
+    // AI提案（なぜ）
+    function suggestWhy(nodeId) {
+      updateContent(nodeId);
+      const node = nodes[nodeId];
+      if (!node || !node.content.trim()) {
+        showMessage('先に内容を入力してください', 'error');
+        return;
+      }
+
+      document.getElementById('aiModalTitle').textContent = 'AI提案 (なぜ)';
+      document.getElementById('aiContent').innerHTML = '<p class="text-gray-500">AIが考え中...</p>';
+      document.getElementById('aiModal').classList.remove('hidden');
+
+      const flatNodes = Object.values(nodes).map(n => ({
+        id: n.id, parentId: n.parentId || '', content: n.content, level: n.level, type: n.type
+      }));
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success && result.suggestions) {
+            let html = '<div class="space-y-2">';
+            result.suggestions.forEach((s, i) => {
+              html += `<button onclick="applyWhySuggestion('${nodeId}', ${i})" class="w-full text-left p-3 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors">
+                <span class="text-purple-600 font-medium mr-2">${i+1}.</span>${s}
+              </button>`;
+            });
+            html += '</div>';
+            document.getElementById('aiContent').innerHTML = html;
+            window._aiSuggestions = result.suggestions;
+          } else {
+            document.getElementById('aiContent').innerHTML = '<p class="text-red-500">' + (result.error || 'エラーが発生しました') + '</p>';
+          }
+        })
+        .withFailureHandler(function(error) {
+          document.getElementById('aiContent').innerHTML = '<p class="text-red-500">エラー: ' + error.message + '</p>';
+        })
+        .suggestNextWhy({ nodes: flatNodes, targetNodeContent: node.content });
+    }
+
+    // AI提案（対策）
+    function suggestAction(nodeId) {
+      updateContent(nodeId);
+      const node = nodes[nodeId];
+      if (!node || !node.content.trim()) {
+        showMessage('先に内容を入力してください', 'error');
+        return;
+      }
+
+      document.getElementById('aiModalTitle').textContent = 'AI提案 (対策)';
+      document.getElementById('aiContent').innerHTML = '<p class="text-gray-500">AIが考え中...</p>';
+      document.getElementById('aiModal').classList.remove('hidden');
+
+      const flatNodes = Object.values(nodes).map(n => ({
+        id: n.id, parentId: n.parentId || '', content: n.content, level: n.level, type: n.type
+      }));
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success && result.suggestions) {
+            let html = '<div class="space-y-2">';
+            result.suggestions.forEach((s, i) => {
+              html += `<button onclick="applyActionSuggestion('${nodeId}', ${i})" class="w-full text-left p-3 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors">
+                <span class="text-orange-600 font-medium mr-2">${i+1}.</span>${s}
+              </button>`;
+            });
+            html += '</div>';
+            document.getElementById('aiContent').innerHTML = html;
+            window._aiSuggestions = result.suggestions;
+          } else {
+            document.getElementById('aiContent').innerHTML = '<p class="text-red-500">' + (result.error || 'エラーが発生しました') + '</p>';
+          }
+        })
+        .withFailureHandler(function(error) {
+          document.getElementById('aiContent').innerHTML = '<p class="text-red-500">エラー: ' + error.message + '</p>';
+        })
+        .suggestAction({ nodes: flatNodes, targetNodeContent: node.content });
+    }
+
+    function applyWhySuggestion(parentId, index) {
+      const suggestion = window._aiSuggestions[index];
+      const parent = nodes[parentId];
+      if (parent && suggestion) {
+        createNode(parentId, parent.level + 1, 'why', suggestion);
+        renderTree();
+        closeAiModal();
+      }
+    }
+
+    function applyActionSuggestion(parentId, index) {
+      const suggestion = window._aiSuggestions[index];
+      const parent = nodes[parentId];
+      if (parent && suggestion) {
+        createNode(parentId, parent.level + 1, 'action', suggestion);
+        renderTree();
+        closeAiModal();
+      }
+    }
+
+    function closeAiModal() {
+      document.getElementById('aiModal').classList.add('hidden');
+    }
+
+    // 初期化実行
+    init();
+  </script>
 </body>
 </html>
