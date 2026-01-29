@@ -1,0 +1,12 @@
+{
+  "name": "nazenaze-analysis",
+  "version": "1.0.0",
+  "description": "なぜなぜ分析ツール - Why-Why Analysis Tool",
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "build:gas": "cd frontend && npm run build && node scripts/build-gas.js"
+  },
+  "keywords": ["why-why-analysis", "root-cause-analysis", "gas", "react"],
+  "license": "MIT"
+}
